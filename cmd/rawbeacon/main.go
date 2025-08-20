@@ -8,9 +8,12 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -41,11 +44,11 @@ var (
 
 	stopSender chan struct{}
 	stopRecv   chan struct{}
+	stopPrune  chan struct{}
+	stopUI     chan struct{}
 	wg         sync.WaitGroup
 
 	restartMu sync.Mutex
-
-	mainWindow fyne.Window
 
 	// UI binding (thread-safe updates without RunOnMain)
 	listData = binding.NewStringList()
@@ -53,6 +56,8 @@ var (
 	// Refresh / pruning parameters
 	staleAfter     = 5 * time.Second // delete entry if not seen for this duration
 	uiRefreshEvery = 1 * time.Second // rebuild list to update "ago" text
+
+	logFile *os.File
 )
 
 // ---------- Helpers ----------
@@ -69,16 +74,78 @@ func generateUID() {
 	}
 }
 
-// getLocalIP returns first non-loopback IPv4 (best effort)
+// isPrivateIPv4 returns true for RFC1918 addresses.
+func isPrivateIPv4(ip net.IP) bool {
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return false
+	}
+	switch {
+	case ip4[0] == 10:
+		return true
+	case ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31:
+		return true
+	case ip4[0] == 192 && ip4[1] == 168:
+		return true
+	default:
+		return false
+	}
+}
+
+// isLinkLocal169 returns true for 169.254.0.0/16.
+func isLinkLocal169(ip net.IP) bool {
+	ip4 := ip.To4()
+	return ip4 != nil && ip4[0] == 169 && ip4[1] == 254
+}
+
+// containsAny checks if s contains any of the substrings (case-insensitive).
+func containsAny(s string, subs []string) bool {
+	ls := strings.ToLower(s)
+	for _, sub := range subs {
+		if strings.Contains(ls, strings.ToLower(sub)) {
+			return true
+		}
+	}
+	return false
+}
+
+// getLocalIP prefers RFC1918 private IPv4s (LAN/WLAN), then 169.254.x.x, else "0.0.0.0".
 func getLocalIP() string {
-	addrs, err := net.InterfaceAddrs()
+	ifaces, err := net.Interfaces()
 	if err != nil {
 		return "0.0.0.0"
 	}
-	for _, a := range addrs {
-		if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
-			return ipnet.IP.String()
+	var linkLocalCand string
+
+	for _, iface := range ifaces {
+		// skip down or loopback
+		if (iface.Flags&net.FlagUp) == 0 || (iface.Flags&net.FlagLoopback) != 0 {
+			continue
 		}
+		// heuristic: skip some virtual adapters by name
+		if containsAny(iface.Name, []string{"virtual", "vethernet", "vpn", "docker", "hyper-v", "vbox", "zerotier"}) {
+			continue
+		}
+		addrs, _ := iface.Addrs()
+		for _, a := range addrs {
+			ipNet, ok := a.(*net.IPNet)
+			if !ok || ipNet.IP == nil {
+				continue
+			}
+			ip := ipNet.IP.To4()
+			if ip == nil {
+				continue
+			}
+			if isPrivateIPv4(ip) {
+				return ip.String()
+			}
+			if isLinkLocal169(ip) && linkLocalCand == "" {
+				linkLocalCand = ip.String()
+			}
+		}
+	}
+	if linkLocalCand != "" {
+		return linkLocalCand
 	}
 	return "0.0.0.0"
 }
@@ -87,8 +154,6 @@ func getLocalIP() string {
 func refreshListBinding() {
 	peersMu.Lock()
 	now := time.Now()
-
-	// build rows text
 	rows := make([]string, 0, len(peers))
 	for _, p := range peers {
 		age := now.Sub(p.LastSeen).Truncate(time.Second)
@@ -96,10 +161,7 @@ func refreshListBinding() {
 	}
 	peersMu.Unlock()
 
-	// stable order for nicer UX
 	sort.Strings(rows)
-
-	// push whole slice to binding (triggers UI update)
 	_ = listData.Set(rows)
 }
 
@@ -108,6 +170,7 @@ func refreshListBinding() {
 // senderLoop broadcasts our ID regularly to LAN broadcast and localhost
 func senderLoop(stop <-chan struct{}) {
 	defer wg.Done()
+	defer log.Println("sender exited")
 
 	// broadcast destination (LAN)
 	bcastAddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("255.255.255.255:%d", sendPort))
@@ -154,6 +217,7 @@ func senderLoop(stop <-chan struct{}) {
 // receiverLoop listens on recvPort and updates the peers map + UI binding
 func receiverLoop(stop <-chan struct{}) {
 	defer wg.Done()
+	defer log.Println("receiver exited")
 
 	lc := net.ListenConfig{}
 	pc, err := lc.ListenPacket(context.Background(), "udp4", fmt.Sprintf(":%d", recvPort))
@@ -177,7 +241,6 @@ func receiverLoop(stop <-chan struct{}) {
 		peers[uid] = Peer{UID: uid, Tag: tag, IP: ip, LastSeen: time.Now()}
 		peersMu.Unlock()
 
-		// update list immediately on new/updated peer
 		refreshListBinding()
 	})
 
@@ -223,6 +286,7 @@ func pruneLoop(stop <-chan struct{}) {
 	for {
 		select {
 		case <-stop:
+			log.Println("prune exited")
 			return
 		case <-t.C:
 			changed := false
@@ -249,13 +313,49 @@ func uiRefreshLoop(stop <-chan struct{}) {
 	for {
 		select {
 		case <-stop:
+			log.Println("ui refresh exited")
 			return
 		case <-t.C:
-			// Recompute "ago" strings and push to binding.
-			// binding.StringList is thread-safe; this triggers a redraw.
 			refreshListBinding()
-			log.Println("ui tick")
 		}
+	}
+}
+
+// cleanup stops all goroutines and waits for them to exit, then closes log.
+func cleanup() {
+	log.Println("cleanup: stopping goroutines...")
+	if stopPrune != nil {
+		select {
+		case <-stopPrune:
+		default:
+			close(stopPrune)
+		}
+	}
+	if stopUI != nil {
+		select {
+		case <-stopUI:
+		default:
+			close(stopUI)
+		}
+	}
+	if stopSender != nil {
+		select {
+		case <-stopSender:
+		default:
+			close(stopSender)
+		}
+	}
+	if stopRecv != nil {
+		select {
+		case <-stopRecv:
+		default:
+			close(stopRecv)
+		}
+	}
+	wg.Wait()
+	log.Println("cleanup: all goroutines stopped")
+	if logFile != nil {
+		_ = logFile.Close()
 	}
 }
 
@@ -266,16 +366,31 @@ func main() {
 	f, err := os.OpenFile("rawbeacon.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err == nil {
 		log.SetOutput(f)
+		logFile = f
 	} else {
 		fmt.Println("could not open log file:", err)
 	}
+
+	// handle Ctrl+C / console close gracefully too
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
+	go func() {
+		<-sigc
+		cleanup()
+		os.Exit(0)
+	}()
 
 	generateUID()
 
 	myApp := app.New()
 	w := myApp.NewWindow("rawBeacon PoC (ID Broadcast)")
-	mainWindow = w
 	w.Resize(fyne.NewSize(720, 420))
+
+	// If the user clicks the window close button: stop everything first.
+	w.SetCloseIntercept(func() {
+		cleanup()
+		os.Exit(0)
+	})
 
 	// Inputs
 	idEntry := widget.NewEntry()
@@ -288,13 +403,17 @@ func main() {
 	// List bound to listData (auto-updates when listData changes)
 	peerList := widget.NewListWithData(
 		listData,
-		// create: return a label that's already binding-aware
 		func() fyne.CanvasObject { return widget.NewLabelWithData(binding.NewString()) },
-		// update: bind this cell to the provided DataItem (binding.String)
 		func(di binding.DataItem, co fyne.CanvasObject) {
 			co.(*widget.Label).Bind(di.(binding.String))
 		},
 	)
+
+	status := widget.NewLabel("")
+	updateStatus := func() {
+		status.SetText(fmt.Sprintf("Broadcasting: %q @ %s → :%d   |   Listening ← :%d",
+			localTag, getLocalIP(), sendPort, recvPort))
+	}
 
 	applyBtn := widget.NewButton("Start / Apply", func() {
 		// read inputs
@@ -312,6 +431,7 @@ func main() {
 		peersMu.Unlock()
 		refreshListBinding()
 
+		updateStatus()
 		restartNetworking()
 	})
 
@@ -322,29 +442,22 @@ func main() {
 	)
 
 	w.SetContent(container.NewBorder(
-		container.NewVBox(form, applyBtn, widget.NewSeparator(), widget.NewLabel("Discovered Peers:")),
+		container.NewVBox(form, applyBtn, status, widget.NewSeparator(), widget.NewLabel("Discovered Peers:")),
 		nil, nil, nil,
 		peerList,
 	))
 
 	// Start networking & background loops once
 	restartNetworking()
-	stopPrune := make(chan struct{})
+	stopPrune = make(chan struct{})
 	go pruneLoop(stopPrune)
-	stopUI := make(chan struct{})
+	stopUI = make(chan struct{})
 	go uiRefreshLoop(stopUI)
+	updateStatus()
 
-	// Run UI
+	// Run UI (will be intercepted by SetCloseIntercept on close)
 	w.ShowAndRun()
 
-	// Cleanup on exit
-	close(stopPrune)
-	close(stopUI)
-	if stopSender != nil {
-		close(stopSender)
-	}
-	if stopRecv != nil {
-		close(stopRecv)
-	}
-	wg.Wait()
+	// Fallback (should not reach if CloseIntercept calls os.Exit)
+	cleanup()
 }
