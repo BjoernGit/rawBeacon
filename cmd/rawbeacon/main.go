@@ -58,6 +58,10 @@ var (
 	uiRefreshEvery = 1 * time.Second // rebuild list to update "ago" text
 
 	logFile *os.File
+
+	// ---- Tags feature (right pane) ----
+	tags   []string   // current tag list for this beacon instance
+	tagsMu sync.Mutex // protects tags
 )
 
 // ---------- Helpers ----------
@@ -150,7 +154,7 @@ func getLocalIP() string {
 	return "0.0.0.0"
 }
 
-// refreshListBinding rebuilds and replaces the bound list so "[Xs ago]" updates live
+// refreshListBinding rebuilds and replaces the bound peer list so "[Xs ago]" updates live.
 func refreshListBinding() {
 	peersMu.Lock()
 	now := time.Now()
@@ -163,6 +167,66 @@ func refreshListBinding() {
 
 	sort.Strings(rows)
 	_ = listData.Set(rows)
+}
+
+// ---------- Tags helpers ----------
+
+// sanitizeTag returns only ASCII letters and digits from s.
+func sanitizeTag(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'A' && r <= 'Z') ||
+			(r >= 'a' && r <= 'z') ||
+			(r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// addTag inserts a tag if not empty and not duplicate.
+func addTag(s string) bool {
+	t := sanitizeTag(s)
+	if t == "" {
+		return false
+	}
+	tagsMu.Lock()
+	defer tagsMu.Unlock()
+	for _, existing := range tags {
+		if strings.EqualFold(existing, t) {
+			return false
+		}
+	}
+	tags = append(tags, t)
+	sort.Strings(tags)
+	return true
+}
+
+// removeTag deletes a tag by exact (case-insensitive) match.
+func removeTag(s string) bool {
+	tagsMu.Lock()
+	defer tagsMu.Unlock()
+	orig := len(tags)
+	out := outReset(tags[:0])
+	for _, v := range tags {
+		if !strings.EqualFold(v, s) {
+			out = append(out, v)
+		}
+	}
+	tags = out
+	return len(tags) != orig
+}
+
+// outReset is a tiny helper to reuse slice capacity.
+func outReset(b []string) []string { return b[:0] }
+
+// GetTags returns a copy of the current tag list (sorted).
+func GetTags() []string {
+	tagsMu.Lock()
+	defer tagsMu.Unlock()
+	out := make([]string, len(tags))
+	copy(out, tags)
+	return out
 }
 
 // ---------- Networking ----------
@@ -204,7 +268,7 @@ func senderLoop(stop <-chan struct{}) {
 		case <-ticker.C:
 			msg := osc.NewMessage("/beacon/id")
 			msg.Append(localUID)     // b: 16 bytes UID
-			msg.Append(localTag)     // s: tag
+			msg.Append(localTag)     // s: primary tag (name)
 			msg.Append(getLocalIP()) // s: ip
 			data, _ := msg.MarshalBinary()
 
@@ -359,6 +423,55 @@ func cleanup() {
 	}
 }
 
+// rebuildTagsUI (top-level): rebuilds the right tag panel.
+// - tagsBox: the container to fill
+// - w: current window (not strictly needed here, but kept for future focus options)
+// - showNewEntry: if true, show a row to add a new tag
+func rebuildTagsUI(tagsBox *fyne.Container, w fyne.Window, showNewEntry bool) {
+	tagsBox.Objects = nil
+	tagsBox.Add(widget.NewLabel("Tags"))
+	tagsBox.Add(widget.NewSeparator())
+
+	// optional "new tag" row
+	if showNewEntry {
+		newEntry := widget.NewEntry()
+		newEntry.SetPlaceHolder("New tag (A–Z, a–z, 0–9)")
+		addBtn := widget.NewButton("Add", func() {
+			_ = addTag(newEntry.Text) // sanitize & insert if valid/unique
+			rebuildTagsUI(tagsBox, w, false)
+		})
+		cancelBtn := widget.NewButton("Cancel", func() { rebuildTagsUI(tagsBox, w, false) })
+		// Enter submits too
+		newEntry.OnSubmitted = func(_ string) { addBtn.OnTapped() }
+
+		right := container.NewHBox(addBtn, cancelBtn)
+		row := container.NewBorder(nil, nil, nil, right, newEntry)
+
+		tagsBox.Add(row)
+	}
+
+	// existing tags
+	for _, t := range GetTags() {
+		tagLabel := widget.NewLabel(t)
+		delBtn := widget.NewButton("-", func(tag string) func() {
+			return func() {
+				if removeTag(tag) {
+					rebuildTagsUI(tagsBox, w, false)
+				}
+			}
+		}(t))
+		row := container.NewBorder(nil, nil, tagLabel, delBtn)
+		tagsBox.Add(row)
+	}
+
+	// "+" at the end
+	addPlus := widget.NewButton("+", func() { rebuildTagsUI(tagsBox, w, true) })
+	tagsBox.Add(widget.NewSeparator())
+	tagsBox.Add(addPlus)
+
+	tagsBox.Refresh()
+}
+
 // ---------- UI / main ----------
 
 func main() {
@@ -383,16 +496,17 @@ func main() {
 	generateUID()
 
 	myApp := app.New()
-	w := myApp.NewWindow("rawBeacon PoC (ID Broadcast)")
-	w.Resize(fyne.NewSize(720, 420))
+	w := myApp.NewWindow("rawBeacon")
+	w.Resize(fyne.NewSize(920, 480))
 
-	// If the user clicks the window close button: stop everything first.
+	// Window close: stop everything first.
 	w.SetCloseIntercept(func() {
 		cleanup()
 		os.Exit(0)
 	})
 
-	// Inputs
+	// ---------- Left pane: Beacon controls + peers ----------
+
 	idEntry := widget.NewEntry()
 	idEntry.SetText(localTag)
 	sendEntry := widget.NewEntry()
@@ -400,7 +514,13 @@ func main() {
 	recvEntry := widget.NewEntry()
 	recvEntry.SetText(strconv.Itoa(recvPort))
 
-	// List bound to listData (auto-updates when listData changes)
+	status := widget.NewLabel("")
+
+	updateStatus := func() {
+		status.SetText(fmt.Sprintf("Broadcasting: %q @ %s → :%d   |   Listening ← :%d",
+			localTag, getLocalIP(), sendPort, recvPort))
+	}
+
 	peerList := widget.NewListWithData(
 		listData,
 		func() fyne.CanvasObject { return widget.NewLabelWithData(binding.NewString()) },
@@ -409,14 +529,7 @@ func main() {
 		},
 	)
 
-	status := widget.NewLabel("")
-	updateStatus := func() {
-		status.SetText(fmt.Sprintf("Broadcasting: %q @ %s → :%d   |   Listening ← :%d",
-			localTag, getLocalIP(), sendPort, recvPort))
-	}
-
 	applyBtn := widget.NewButton("Start / Apply", func() {
-		// read inputs
 		localTag = idEntry.Text
 		if p, err := strconv.Atoi(sendEntry.Text); err == nil && p > 0 && p < 65536 {
 			sendPort = p
@@ -424,30 +537,36 @@ func main() {
 		if p, err := strconv.Atoi(recvEntry.Text); err == nil && p > 0 && p < 65536 {
 			recvPort = p
 		}
-
-		// clear peers on reconfigure (optional)
 		peersMu.Lock()
 		peers = make(map[string]Peer)
 		peersMu.Unlock()
 		refreshListBinding()
-
 		updateStatus()
 		restartNetworking()
 	})
 
-	form := container.NewGridWithColumns(3,
-		container.NewVBox(widget.NewLabel("ID / Tag"), idEntry),
+	leftForm := container.NewGridWithColumns(3,
+		container.NewVBox(widget.NewLabel("ID"), idEntry),
 		container.NewVBox(widget.NewLabel("Send Port"), sendEntry),
 		container.NewVBox(widget.NewLabel("Receive Port"), recvEntry),
 	)
 
-	w.SetContent(container.NewBorder(
-		container.NewVBox(form, applyBtn, status, widget.NewSeparator(), widget.NewLabel("Discovered Peers:")),
+	leftPane := container.NewBorder(
+		container.NewVBox(leftForm, applyBtn, status, widget.NewSeparator(), widget.NewLabel("Discovered Peers:")),
 		nil, nil, nil,
 		peerList,
-	))
+	)
 
-	// Start networking & background loops once
+	// ---------- Right pane: Tags manager ----------
+	tagsBox := container.NewVBox()
+	rebuildTagsUI(tagsBox, w, false) // initial UI
+
+	// ---------- Layout: split left / right ----------
+	root := container.NewHSplit(leftPane, container.NewBorder(nil, nil, nil, nil, tagsBox))
+	root.Offset = 0.66
+	w.SetContent(root)
+
+	// Start networking & background loops
 	restartNetworking()
 	stopPrune = make(chan struct{})
 	go pruneLoop(stopPrune)
@@ -455,9 +574,9 @@ func main() {
 	go uiRefreshLoop(stopUI)
 	updateStatus()
 
-	// Run UI (will be intercepted by SetCloseIntercept on close)
+	// Run UI
 	w.ShowAndRun()
 
-	// Fallback (should not reach if CloseIntercept calls os.Exit)
+	// Fallback cleanup
 	cleanup()
 }

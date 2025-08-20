@@ -43,3 +43,111 @@
 2025/08/20 17:04:16 receiver exited
 2025/08/20 17:04:16 sender exited
 2025/08/20 17:04:16 cleanup: all goroutines stopped
+2025/08/20 20:31:12 sender exited
+2025/08/20 20:31:12 receiver exited
+2025/08/20 20:32:16 cleanup: stopping goroutines...
+2025/08/20 20:32:16 ui refresh exited
+2025/08/20 20:32:16 prune exited
+2025/08/20 20:32:16 sender exited
+2025/08/20 20:32:16 receiver exited
+2025/08/20 20:32:16 cleanup: all goroutines stopped
+2025/08/20 20:46:36 cleanup: stopping goroutines...
+2025/08/20 20:46:36 ui refresh exited
+2025/08/20 20:46:36 prune exited
+2025/08/20 20:46:36 receiver exited
+2025/08/20 20:46:36 sender exited
+2025/08/20 20:46:36 cleanup: all goroutines stopped
+2025/08/20 21:06:23 sender exited
+2025/08/20 21:06:23 receiver exited
+2025/08/20 21:06:30 sender exited
+2025/08/20 21:06:30 receiver exited
+2025/08/20 21:06:51 sender exited
+2025/08/20 21:06:51 receiver exited
+2025/08/20 21:08:58 sender exited
+2025/08/20 21:08:58 receiver exited
+2025/08/20 21:10:34 cleanup: stopping goroutines...
+2025/08/20 21:10:34 ui refresh exited
+2025/08/20 21:10:34 prune exited
+2025/08/20 21:10:34 receiver exited
+2025/08/20 21:10:34 sender exited
+2025/08/20 21:10:34 cleanup: all goroutines stopped
+2025/08/20 21:10:42 recv listen error: listen udp4 :47111: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2025/08/20 21:10:42 receiver exited
+2025/08/20 21:10:58 cleanup: stopping goroutines...
+2025/08/20 21:10:58 prune exited
+2025/08/20 21:10:58 ui refresh exited
+2025/08/20 21:10:58 sender exited
+2025/08/20 21:10:58 cleanup: all goroutines stopped
+2025/08/20 21:12:51 recv listen error: listen udp4 :47111: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2025/08/20 21:12:51 receiver exited
+2025/08/20 21:18:46 recv listen error: listen udp4 :47111: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2025/08/20 21:18:46 receiver exited
+2025/08/20 21:18:52 sender exited
+2025/08/20 21:19:03 sender exited
+2025/08/20 21:19:04 sender exited
+2025/08/20 21:19:04 receiver exited
+2025/08/20 21:19:28 recv listen error: listen udp4 :47111: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2025/08/20 21:19:28 receiver exited
+2025/08/20 21:19:42 sender exited
+2025/08/20 21:19:55 recv listen error: listen udp4 :47111: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2025/08/20 21:19:55 receiver exited
+2025/08/20 21:19:58 recv listen error: listen udp4 :47111: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2025/08/20 21:19:58 receiver exited
+2025/08/20 21:19:59 recv listen error: listen udp4 :47111: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2025/08/20 21:19:59 receiver exited
+2025/08/20 21:20:00 recv listen error: listen udp4 :47111: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2025/08/20 21:20:00 receiver exited
+2025/08/20 21:20:01 recv listen error: listen udp4 :47111: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2025/08/20 21:20:01 receiver exited
+2025/08/20 21:20:12 cleanup: stopping goroutines...
+2025/08/20 21:20:12 prune exited
+2025/08/20 21:20:12 ui refresh exited
+2025/08/20 21:20:12 sender exited
+2025/08/20 21:20:12 cleanup: all goroutines stopped
+2025/08/20 21:20:13 cleanup: stopping goroutines...
+2025/08/20 21:20:13 prune exited
+2025/08/20 21:20:13 ui refresh exited
+2025/08/20 21:20:13 sender exited
+2025/08/20 21:20:13 cleanup: all goroutines stopped
+2025/08/20 21:20:13 cleanup: stopping goroutines...
+2025/08/20 21:20:13 prune exited
+2025/08/20 21:20:13 ui refresh exited
+2025/08/20 21:20:13 sender exited
+2025/08/20 21:20:13 cleanup: all goroutines stopped
+2025/08/20 21:20:14 cleanup: stopping goroutines...
+2025/08/20 21:20:14 prune exited
+2025/08/20 21:20:14 ui refresh exited
+2025/08/20 21:20:14 sender exited
+2025/08/20 21:20:14 cleanup: all goroutines stopped
+2025/08/20 21:20:15 cleanup: stopping goroutines...
+2025/08/20 21:20:15 prune exited
+2025/08/20 21:20:15 ui refresh exited
+2025/08/20 21:20:15 sender exited
+2025/08/20 21:20:15 cleanup: all goroutines stopped
+2025/08/20 21:20:16 cleanup: stopping goroutines...
+2025/08/20 21:20:16 ui refresh exited
+2025/08/20 21:20:16 prune exited
+2025/08/20 21:20:16 sender exited
+2025/08/20 21:20:16 receiver exited
+2025/08/20 21:20:16 cleanup: all goroutines stopped
+2025/08/20 21:20:16 Fyne error:  Error getting current data value
+2025/08/20 21:20:16   Cause: index out of bounds
+2025/08/20 21:20:16   At: C:/Users/Bjorn/go/pkg/mod/fyne.io/fyne/v2@v2.6.2/widget/label.go:186
+2025/08/20 21:20:17 cleanup: stopping goroutines...
+2025/08/20 21:20:17 ui refresh exited
+2025/08/20 21:20:17 prune exited
+2025/08/20 21:20:17 receiver exited
+2025/08/20 21:20:17 sender exited
+2025/08/20 21:20:17 cleanup: all goroutines stopped
+2025/08/20 21:20:18 cleanup: stopping goroutines...
+2025/08/20 21:20:18 ui refresh exited
+2025/08/20 21:20:18 prune exited
+2025/08/20 21:20:18 sender exited
+2025/08/20 21:20:18 receiver exited
+2025/08/20 21:20:18 cleanup: all goroutines stopped
+2025/08/20 21:20:28 cleanup: stopping goroutines...
+2025/08/20 21:20:28 ui refresh exited
+2025/08/20 21:20:28 prune exited
+2025/08/20 21:20:28 sender exited
+2025/08/20 21:20:28 receiver exited
+2025/08/20 21:20:28 cleanup: all goroutines stopped
