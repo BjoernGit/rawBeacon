@@ -45,8 +45,14 @@ var (
 
 	restartMu sync.Mutex
 
+	mainWindow fyne.Window
+
 	// UI binding (thread-safe updates without RunOnMain)
 	listData = binding.NewStringList()
+
+	// Refresh / pruning parameters
+	staleAfter     = 5 * time.Second // delete entry if not seen for this duration
+	uiRefreshEvery = 1 * time.Second // rebuild list to update "ago" text
 )
 
 // ---------- Helpers ----------
@@ -77,18 +83,23 @@ func getLocalIP() string {
 	return "0.0.0.0"
 }
 
-// refreshListBinding rebuilds the displayed list from the peers map
+// refreshListBinding rebuilds and replaces the bound list so "[Xs ago]" updates live
 func refreshListBinding() {
 	peersMu.Lock()
-	defer peersMu.Unlock()
+	now := time.Now()
 
-	// collect and sort for stable UI
+	// build rows text
 	rows := make([]string, 0, len(peers))
 	for _, p := range peers {
-		age := time.Since(p.LastSeen).Truncate(time.Second)
+		age := now.Sub(p.LastSeen).Truncate(time.Second)
 		rows = append(rows, fmt.Sprintf("%s  (%s)  @ %s   [%s ago]", p.Tag, p.UID, p.IP, age))
 	}
+	peersMu.Unlock()
+
+	// stable order for nicer UX
 	sort.Strings(rows)
+
+	// push whole slice to binding (triggers UI update)
 	_ = listData.Set(rows)
 }
 
@@ -101,12 +112,12 @@ func senderLoop(stop <-chan struct{}) {
 	// broadcast destination (LAN)
 	bcastAddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("255.255.255.255:%d", sendPort))
 	if err != nil {
-		fmt.Println("resolve bcast:", err)
+		log.Println("resolve bcast:", err)
 		return
 	}
 	bcastConn, err := net.DialUDP("udp4", nil, bcastAddr)
 	if err != nil {
-		fmt.Println("dial bcast:", err)
+		log.Println("dial bcast:", err)
 		return
 	}
 	defer bcastConn.Close()
@@ -115,7 +126,7 @@ func senderLoop(stop <-chan struct{}) {
 	loopAddr, _ := net.ResolveUDPAddr("udp4", fmt.Sprintf("127.0.0.1:%d", sendPort))
 	loopConn, err := net.DialUDP("udp4", nil, loopAddr)
 	if err != nil {
-		fmt.Println("dial loopback:", err)
+		log.Println("dial loopback:", err)
 		return
 	}
 	defer loopConn.Close()
@@ -147,7 +158,7 @@ func receiverLoop(stop <-chan struct{}) {
 	lc := net.ListenConfig{}
 	pc, err := lc.ListenPacket(context.Background(), "udp4", fmt.Sprintf(":%d", recvPort))
 	if err != nil {
-		fmt.Println("recv listen error:", err)
+		log.Println("recv listen error:", err)
 		return
 	}
 	udp := pc.(*net.UDPConn)
@@ -166,6 +177,7 @@ func receiverLoop(stop <-chan struct{}) {
 		peers[uid] = Peer{UID: uid, Tag: tag, IP: ip, LastSeen: time.Now()}
 		peersMu.Unlock()
 
+		// update list immediately on new/updated peer
 		refreshListBinding()
 	})
 
@@ -178,7 +190,7 @@ func receiverLoop(stop <-chan struct{}) {
 		_ = udp.Close() // stops Serve()
 	case err := <-errCh:
 		if err != nil {
-			fmt.Println("recv Serve error:", err)
+			log.Println("recv Serve error:", err)
 		}
 	}
 }
@@ -204,9 +216,9 @@ func restartNetworking() {
 	go receiverLoop(stopRecv)
 }
 
-// pruneLoop periodically removes stale peers (no update for 2 min)
+// pruneLoop periodically removes stale peers (no update for staleAfter)
 func pruneLoop(stop <-chan struct{}) {
-	t := time.NewTicker(2 * time.Second)
+	t := time.NewTicker(500 * time.Millisecond)
 	defer t.Stop()
 	for {
 		select {
@@ -214,9 +226,10 @@ func pruneLoop(stop <-chan struct{}) {
 			return
 		case <-t.C:
 			changed := false
+			cutoff := time.Now().Add(-staleAfter)
 			peersMu.Lock()
 			for k, p := range peers {
-				if time.Since(p.LastSeen) > 2*time.Minute {
+				if p.LastSeen.Before(cutoff) {
 					delete(peers, k)
 					changed = true
 				}
@@ -229,9 +242,27 @@ func pruneLoop(stop <-chan struct{}) {
 	}
 }
 
+// uiRefreshLoop rebuilds the list periodically so "[Xs ago]" updates live
+func uiRefreshLoop(stop <-chan struct{}) {
+	t := time.NewTicker(uiRefreshEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+			// Recompute "ago" strings and push to binding.
+			// binding.StringList is thread-safe; this triggers a redraw.
+			refreshListBinding()
+			log.Println("ui tick")
+		}
+	}
+}
+
 // ---------- UI / main ----------
 
 func main() {
+	// optional file logging (keeps logs when built with -H=windowsgui)
 	f, err := os.OpenFile("rawbeacon.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err == nil {
 		log.SetOutput(f)
@@ -243,6 +274,7 @@ func main() {
 
 	myApp := app.New()
 	w := myApp.NewWindow("rawBeacon PoC (ID Broadcast)")
+	mainWindow = w
 	w.Resize(fyne.NewSize(720, 420))
 
 	// Inputs
@@ -253,13 +285,14 @@ func main() {
 	recvEntry := widget.NewEntry()
 	recvEntry.SetText(strconv.Itoa(recvPort))
 
-	// List bound to listData (thread-safe updates)
+	// List bound to listData (auto-updates when listData changes)
 	peerList := widget.NewListWithData(
 		listData,
-		func() fyne.CanvasObject { return widget.NewLabel("") },
-		func(i binding.DataItem, o fyne.CanvasObject) {
-			str, _ := i.(binding.String).Get()
-			o.(*widget.Label).SetText(str)
+		// create: return a label that's already binding-aware
+		func() fyne.CanvasObject { return widget.NewLabelWithData(binding.NewString()) },
+		// update: bind this cell to the provided DataItem (binding.String)
+		func(di binding.DataItem, co fyne.CanvasObject) {
+			co.(*widget.Label).Bind(di.(binding.String))
 		},
 	)
 
@@ -294,16 +327,19 @@ func main() {
 		peerList,
 	))
 
-	// Start networking & pruning once
+	// Start networking & background loops once
 	restartNetworking()
 	stopPrune := make(chan struct{})
 	go pruneLoop(stopPrune)
+	stopUI := make(chan struct{})
+	go uiRefreshLoop(stopUI)
 
 	// Run UI
 	w.ShowAndRun()
 
 	// Cleanup on exit
 	close(stopPrune)
+	close(stopUI)
 	if stopSender != nil {
 		close(stopSender)
 	}
