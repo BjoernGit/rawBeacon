@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
-	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	broadcastAddr = "255.255.255.255:47017"
-	listenPort    = 47017
-	ttlMS         = 30000
+	defaultSendPort = 47017
+	defaultRecvPort = 47017
+	ttlMS           = 30000
 )
 
 type Peer struct {
@@ -30,21 +30,45 @@ type Peer struct {
 }
 
 var (
-	localUID = makeUID()
-	tagName  = "DefaultID"
-	peers    = make(map[string]Peer)
-	peersMu  sync.Mutex
+	localUID   = makeUID()
+	tagName    = "DefaultID"
+	sendPort   = defaultSendPort
+	recvPort   = defaultRecvPort
+	peers      = make(map[string]Peer)
+	peersMu    sync.Mutex
+	stopSender = make(chan struct{})
+	stopRecv   = make(chan struct{})
+	wg         sync.WaitGroup
 )
 
 func main() {
-	// --- Fyne UI ---
+	// ---- UI ----
 	a := app.New()
-	w := a.NewWindow("rawBeacon PoC")
+	w := a.NewWindow("rawBeacon PoC (ID Broadcast)")
 
-	tagEntry := widget.NewEntry()
-	tagEntry.SetText(tagName)
-	tagEntry.SetPlaceHolder("Enter ID/Tag here")
-	tagEntry.OnChanged = func(s string) { tagName = s }
+	idEntry := widget.NewEntry()
+	idEntry.SetText(tagName)
+	idEntry.SetPlaceHolder("ID / Tag")
+	idEntry.OnChanged = func(s string) { tagName = s }
+
+	sendEntry := widget.NewEntry()
+	sendEntry.SetText(strconv.Itoa(sendPort))
+	sendEntry.SetPlaceHolder("Send Port (z.B. 47017)")
+
+	recvEntry := widget.NewEntry()
+	recvEntry.SetText(strconv.Itoa(recvPort))
+	recvEntry.SetPlaceHolder("Receive Port (z.B. 47018)")
+
+	applyBtn := widget.NewButton("Start / Apply", func() {
+		// parse ports
+		if p, err := strconv.Atoi(sendEntry.Text); err == nil && p > 0 && p < 65536 {
+			sendPort = p
+		}
+		if p, err := strconv.Atoi(recvEntry.Text); err == nil && p > 0 && p < 65536 {
+			recvPort = p
+		}
+		restartNetworking()
+	})
 
 	peerList := widget.NewList(
 		func() int {
@@ -59,7 +83,8 @@ func main() {
 			idx := 0
 			for _, p := range peers {
 				if idx == i {
-					o.(*widget.Label).SetText(fmt.Sprintf("%s (%s) @ %s", p.Tag, p.UID, p.IP))
+					age := time.Since(p.LastSeen).Truncate(time.Second)
+					o.(*widget.Label).SetText(fmt.Sprintf("%s (%s) @ %s  [%s ago]", p.Tag, p.UID, p.IP, age))
 					break
 				}
 				idx++
@@ -67,19 +92,70 @@ func main() {
 		},
 	)
 
-	w.SetContent(container.NewVBox(
-		widget.NewLabel("Local ID/Tag:"),
-		tagEntry,
-		widget.NewLabel("Discovered Peers:"),
+	// kleines Auto-Pruning alter Einträge
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		for range t.C {
+			changed := false
+			peersMu.Lock()
+			for k, p := range peers {
+				if time.Since(p.LastSeen) > 2*time.Minute {
+					delete(peers, k)
+					changed = true
+				}
+			}
+			peersMu.Unlock()
+			if changed {
+				peerList.Refresh()
+			}
+		}
+	}()
+
+	form := container.NewGridWithColumns(3,
+		container.NewVBox(widget.NewLabel("ID / Tag"), idEntry),
+		container.NewVBox(widget.NewLabel("Send Port"), sendEntry),
+		container.NewVBox(widget.NewLabel("Receive Port"), recvEntry),
+	)
+
+	w.SetContent(container.NewBorder(
+		container.NewVBox(form, applyBtn, widget.NewSeparator(), widget.NewLabel("Discovered Peers:")),
+		nil, nil, nil,
 		peerList,
 	))
-	w.Resize(fyne.NewSize(500, 400))
 
-	// --- Networking ---
-	go senderLoop()
-	go receiverLoop(peerList)
+	w.Resize(fyne.NewSize(680, 420))
+	w.Show()
 
-	w.ShowAndRun()
+	// direkt einmal starten
+	restartNetworking()
+
+	a.Run()
+
+	// sauber stoppen
+	close(stopSender)
+	close(stopRecv)
+	wg.Wait()
+}
+
+func restartNetworking() {
+	// bestehende Loops stoppen
+	closeIfOpen(&stopSender)
+	stopSender = make(chan struct{})
+	closeIfOpen(&stopRecv)
+	stopRecv = make(chan struct{})
+
+	// Sender & Empfänger neu starten
+	wg.Add(2)
+	go senderLoop(stopSender)
+	go receiverLoop(stopRecv)
+}
+
+func closeIfOpen(ch *chan struct{}) {
+	select {
+	case <-*ch:
+	default:
+		close(*ch)
+	}
 }
 
 func makeUID() []byte {
@@ -90,40 +166,68 @@ func makeUID() []byte {
 
 func uidHex() string { return hex.EncodeToString(localUID) }
 
-func senderLoop() {
-	addr, err := net.ResolveUDPAddr("udp4", broadcastAddr)
+func senderLoop(stop <-chan struct{}) {
+	defer wg.Done()
+
+	// Ziele:
+	// 1) Broadcast im LAN (255.255.255.255:<sendPort>)
+	bcastAddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("255.255.255.255:%d", sendPort))
 	if err != nil {
-		panic(err)
+		fmt.Println("resolve bcast:", err)
+		return
 	}
-	conn, err := net.DialUDP("udp4", nil, addr)
+	bcastConn, err := net.DialUDP("udp4", nil, bcastAddr)
 	if err != nil {
-		panic(err)
+		fmt.Println("dial bcast:", err)
+		return
 	}
-	defer conn.Close()
+	defer bcastConn.Close()
+
+	// 2) Zusätzlich localhost (127.0.0.1:<sendPort>) → so können zwei Instanzen
+	//    auf demselben Rechner miteinander sehen, auch wenn Broadcast lokal nicht looped.
+	localAddr, _ := net.ResolveUDPAddr("udp4", fmt.Sprintf("127.0.0.1:%d", sendPort))
+	localConn, err := net.DialUDP("udp4", nil, localAddr)
+	if err != nil {
+		fmt.Println("dial localhost:", err)
+		return
+	}
+	defer localConn.Close()
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 
 	for {
-		// Timestamp als int32 Sekunden (einfacher; int64 kann je nach Lib zicken)
-		tsSec := int32(time.Now().Unix())
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			tsSec := int32(time.Now().Unix())
+			msg := osc.NewMessage("/beacon/id")
+			msg.Append(localUID)        // b uid16
+			msg.Append(tagName)         // s tag
+			msg.Append(getLocalIP())    // s ip (best effort)
+			msg.Append(int32(recvPort)) // i port (auf dem WIR lauschen)
+			msg.Append(int32(ttlMS))    // i ttl_ms
+			msg.Append(tsSec)           // i ts (sekunden)
+			data, _ := msg.MarshalBinary()
 
-		msg := osc.NewMessage("/beacon/id")
-		msg.Append(localUID)          // b uid16
-		msg.Append(tagName)           // s tag
-		msg.Append(getLocalIP())      // s ip
-		msg.Append(int32(listenPort)) // i port
-		msg.Append(int32(ttlMS))      // i ttl_ms
-		msg.Append(tsSec)             // i ts (sekunden)
-
-		data, _ := msg.MarshalBinary()
-		_, _ = conn.Write(data)
-
-		time.Sleep(2 * time.Second)
+			// senden an Broadcast + localhost
+			_, _ = bcastConn.Write(data)
+			_, _ = localConn.Write(data)
+		}
 	}
 }
 
-func receiverLoop(peerList *widget.List) {
-	addr := fmt.Sprintf(":%d", listenPort)
+func receiverLoop(stop <-chan struct{}) {
+	defer wg.Done()
 
-	// Dispatcher statt server.Handle(...)
+	addr := &net.UDPAddr{IP: net.IPv4zero, Port: recvPort}
+	conn, err := net.ListenUDP("udp4", addr)
+	if err != nil {
+		fmt.Println("recv listen error:", err)
+		return
+	}
+
 	disp := osc.NewStandardDispatcher()
 	_ = disp.AddMsgHandler("/beacon/id", func(msg *osc.Message) {
 		uidBytes, _ := msg.Arguments[0].([]byte)
@@ -133,24 +237,32 @@ func receiverLoop(peerList *widget.List) {
 
 		if uid == uidHex() {
 			return
-		} // eigenes ignorieren
-
+		}
 		peersMu.Lock()
 		peers[uid] = Peer{UID: uid, Tag: tag, IP: ip, LastSeen: time.Now()}
 		peersMu.Unlock()
-
-		peerList.Refresh()
 	})
 
-	server := &osc.Server{
-		Addr:       addr,
-		Dispatcher: disp,
-	}
+	server := &osc.Server{Dispatcher: disp}
 
-	fmt.Println("Listening on", addr)
-	if err := server.ListenAndServe(); err != nil {
-		fmt.Println("Error:", err)
-		os.Exit(1)
+	errCh := make(chan error, 1)
+	go func() {
+		// wichtig: Serve auf unserer UDPConn → blockiert bis conn.Close()
+		errCh <- server.Serve(conn)
+	}()
+
+	for {
+		select {
+		case <-stop:
+			// so stoppen wir den Receiver: UDPConn schließen
+			_ = conn.Close()
+			return
+		case err := <-errCh:
+			if err != nil {
+				fmt.Println("recv Serve error:", err)
+			}
+			return
+		}
 	}
 }
 
