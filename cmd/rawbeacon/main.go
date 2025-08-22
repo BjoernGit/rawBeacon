@@ -308,6 +308,98 @@ func receiverLoop(stop <-chan struct{}) {
 		refreshListBinding()
 	})
 
+	// /beacon/ids/request : args = s reply_ip, i reply_port, s request_id
+	_ = disp.AddMsgHandler("/beacon/ids/request", func(msg *osc.Message) {
+		if len(msg.Arguments) < 3 {
+			log.Println("ids/request: not enough args")
+			return
+		}
+		replyIP, _ := msg.Arguments[0].(string)
+		replyPort32, _ := msg.Arguments[1].(int32)
+		reqID, _ := msg.Arguments[2].(string)
+		replyPort := int(replyPort32)
+
+		// snapshot peers map
+		peersMu.Lock()
+		snap := make([]Peer, 0, len(peers))
+		for _, p := range peers {
+			snap = append(snap, p)
+		}
+		peersMu.Unlock()
+
+		// build response
+		m := osc.NewMessage("/beacon/ids/response")
+		m.Append(reqID)            // s: echo request id
+		m.Append(int32(len(snap))) // i: count
+		for _, p := range snap {
+			uidBytes, _ := hex.DecodeString(p.UID) // our map stores hex; convert back to 16 bytes
+			m.Append(uidBytes)                     // b: uid(16)
+			m.Append(p.Tag)                        // s
+			m.Append(p.IP)                         // s
+		}
+
+		// send unicast to consumer
+		dst := fmt.Sprintf("%s:%d", replyIP, replyPort)
+		ua, err := net.ResolveUDPAddr("udp4", dst)
+		if err != nil {
+			log.Println("ids/response resolve:", err)
+			return
+		}
+		c, err := net.DialUDP("udp4", nil, ua)
+		if err != nil {
+			log.Println("ids/response dial:", err)
+			return
+		}
+		defer c.Close()
+		data, _ := m.MarshalBinary()
+		_, _ = c.Write(data)
+	})
+
+	_ = disp.AddMsgHandler("/beacon/tags/request", func(msg *osc.Message) {
+		// Expected args: s reply_ip, i reply_port, s request_id, s target_uid_hex, i max_age_ms (optional)
+		if len(msg.Arguments) < 4 {
+			return
+		}
+
+		replyIP, _ := msg.Arguments[0].(string)
+		replyPort, _ := msg.Arguments[1].(int32)
+		reqID, _ := msg.Arguments[2].(string)
+		targetUID, _ := msg.Arguments[3].(string)
+
+		// Filter: only answer if target empty or matches us
+		if targetUID != "" && !strings.EqualFold(targetUID, uidHex()) {
+			return
+		}
+
+		// Build response
+		tags := GetTags() // rechte Seitenleiste
+		m := osc.NewMessage("/beacon/tags/response")
+		m.Append(localUID)         // b
+		m.Append(localTag)         // s
+		m.Append(getLocalIP())     // s
+		m.Append(int32(recvPort))  // i
+		m.Append(reqID)            // s
+		m.Append(int32(len(tags))) // i
+		for _, t := range tags {
+			m.Append(t) // s
+		}
+
+		// Send unicast back to requester
+		addr := fmt.Sprintf("%s:%d", replyIP, int(replyPort))
+		udpAddr, err := net.ResolveUDPAddr("udp4", addr)
+		if err != nil {
+			return
+		}
+		conn, err := net.DialUDP("udp4", nil, udpAddr)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		data, _ := m.MarshalBinary()
+		_, _ = conn.Write(data)
+	})
+
 	server := &osc.Server{Dispatcher: disp}
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.Serve(udp) }()
