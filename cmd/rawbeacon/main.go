@@ -27,15 +27,6 @@ import (
 	"github.com/BjoernGit/rawBeacon/internal/store"
 )
 
-// ---------- Types & Globals ----------
-
-type PeerView struct {
-	UID      string
-	Tag      string
-	IP       string
-	LastSeen time.Time
-}
-
 var (
 	// identity & ports
 	localUID  []byte
@@ -44,7 +35,7 @@ var (
 	recvPort  = 47111
 
 	// state stores
-	peerStore = store.NewPeerStore(5 * time.Second)
+	peerStore = store.NewPeerStore() // <-- keine Argumente mehr
 	tagStore  = store.NewTagStore()
 
 	// threading
@@ -86,7 +77,8 @@ func refreshListBinding() {
 	rows := make([]string, 0, len(snap))
 	for _, p := range snap {
 		age := now.Sub(p.LastSeen).Truncate(time.Second)
-		rows = append(rows, fmt.Sprintf("%s  (%s)  @ %s   [%s ago]", p.Tag, p.UID, p.IP, age))
+		// p.Name statt p.Tag
+		rows = append(rows, fmt.Sprintf("%s  (%s)  @ %s   [%s ago]", p.Name, p.UID, p.IP, age))
 	}
 	sort.Strings(rows)
 	_ = listData.Set(rows)
@@ -126,14 +118,12 @@ func receiverLoop(stop <-chan struct{}) {
 	defer wg.Done()
 	defer log.Println("receiver exited")
 
-	// bind UDP
 	udp, err := netx.ListenUDP(recvPort)
 	if err != nil {
 		log.Println("recv listen error:", err)
 		return
 	}
 
-	// dispatcher with our handlers
 	disp := osc.NewStandardDispatcher()
 	handlers.Register(disp, peerStore, tagStore, localUID, localName, recvPort)
 
@@ -190,11 +180,11 @@ func pruneLoop(stop <-chan struct{}) {
 			log.Println("prune exited")
 			return
 		case <-t.C:
-			removed := peerStore.Prune(time.Now())
+			// neue API: Dauer übergeben, nicht time.Now()
+			removed := peerStore.Prune(staleAfter)
 			if removed > 0 {
 				refreshListBinding()
 			} else {
-				// still refresh to tick the "ago" text
 				refreshListBinding()
 			}
 		}
@@ -363,11 +353,8 @@ func main() {
 			recvPort = p
 		}
 
-		// Clear peers on reconfigure (optional)
-		for _, p := range peerStore.Snapshot() {
-			_ = p // just to force snapshot; store has no clear; we recreate it:
-		}
-		peerStore = store.NewPeerStore(staleAfter)
+		// PeerStore neu aufsetzen (einfachste Form von "clear")
+		peerStore = store.NewPeerStore()
 
 		refreshListBinding()
 		updateStatus()

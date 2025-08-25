@@ -21,3 +21,86 @@
 2025/08/25 14:37:02 receiver: stop signal -> closing socket
 2025/08/25 14:37:02 consumer receiver exited
 2025/08/25 14:37:02 cleanup: done
+2025/08/25 14:50:20 === BeaconConsumer started, logging to beaconconsumer.log ===
+2025/08/25 14:50:20 receiver: starting on :48001 ...
+2025/08/25 14:50:27 CLICK: Apply
+2025/08/25 14:50:28 CLICK: Query IDs
+2025/08/25 14:50:28 SEND /beacon/ids/request reqID=1756126228240234400 -> 127.0.0.1:47111 (reply=192.168.1.120:48001)
+2025/08/25 14:50:28 RECV /beacon/ids/response FROM 192.168.1.120:64454
+2025/08/25 14:50:28 RECV /beacon/ids/response reqID=1756126228240234400 peers=1
+2025/08/25 14:50:28 ids/resp peer #0: uid=3b590065fad199ffd8931faffb2ecab7 tag="Server" ip=192.168.1.112
+2025/08/25 14:50:28 UI rows updated: 1 rows
+2025/08/25 14:50:29 SELECT row=0 text="Server  (3b590065fad199ffd8931faffb2ecab7)  @ 192.168.1.112" kind=peer uid=3b590065fad199ffd8931faffb2ecab7
+2025/08/25 14:50:29 CLICK: Query Tags -> selected uid=3b590065fad199ffd8931faffb2ecab7
+2025/08/25 14:50:29 CLICK: Query Tags (selected) target_uid="3b590065fad199ffd8931faffb2ecab7"
+2025/08/25 14:50:29 SEND /beacon/tags/request reqID=1756126229940073600 target_uid=3b590065fad199ffd8931faffb2ecab7 -> 127.0.0.1:47111 (reply=192.168.1.120:48001)
+2025/08/25 14:50:29 RECV /beacon/tags/response FROM 192.168.1.112:59350
+2025/08/25 14:50:29 RECV /beacon/tags/response reqID=1756126229940073600 uid=3b590065fad199ffd8931faffb2ecab7 primary="Server" ip=192.168.1.112 port=47111 tags=[IsServer] (count=1)
+2025/08/25 14:50:29 UI rows updated: 2 rows
+2025/08/25 14:50:29 replaceTagsUnderPeer: peer=3b590065fad199ffd8931faffb2ecab7 tags=[IsServer]
+2025/08/25 14:50:44 CLICK: Query Tags -> selected uid=3b590065fad199ffd8931faffb2ecab7
+2025/08/25 14:50:44 CLICK: Query Tags (selected) target_uid="3b590065fad199ffd8931faffb2ecab7"
+2025/08/25 14:50:44 SEND /beacon/tags/request reqID=1756126244156988600 target_uid=3b590065fad199ffd8931faffb2ecab7 -> 127.0.0.1:47111 (reply=192.168.1.120:48001)
+2025/08/25 14:50:44 RECV /beacon/tags/response FROM 192.168.1.112:55987
+2025/08/25 14:50:44 RECV /beacon/tags/response reqID=1756126244156988600 uid=3b590065fad199ffd8931faffb2ecab7 primary="Server" ip=192.168.1.112 port=47111 tags=[IsServer MegaMan] (count=2)
+2025/08/25 14:50:44 UI rows updated: 3 rows
+2025/08/25 14:50:44 replaceTagsUnderPeer: peer=3b590065fad199ffd8931faffb2ecab7 tags=[IsServer MegaMan]
+2025/08/25 14:50:53 CLICK: Query Tags -> selected uid=3b590065fad199ffd8931faffb2ecab7
+2025/08/25 14:50:53 CLICK: Query Tags (selected) target_uid="3b590065fad199ffd8931faffb2ecab7"
+2025/08/25 14:50:53 SEND /beacon/tags/request reqID=1756126253240203000 target_uid=3b590065fad199ffd8931faffb2ecab7 -> 127.0.0.1:47111 (reply=192.168.1.120:48001)
+2025/08/25 14:50:53 RECV /beacon/tags/response FROM 192.168.1.112:56003
+2025/08/25 14:50:53 RECV /beacon/tags/response reqID=1756126253240203000 uid=3b590065fad199ffd8931faffb2ecab7 primary="Server" ip=192.168.1.112 port=47111 tags=[MegaMan] (count=1)
+2025/08/25 14:50:53 UI rows updated: 2 rows
+2025/08/25 14:50:53 replaceTagsUnderPeer: peer=3b590065fad199ffd8931faffb2ecab7 tags=[MegaMan]
+2025/08/25 14:52:13 CLICK: Apply
+2025/08/25 14:52:14 CLICK: Query IDs
+2025/08/25 14:52:14 SEND /beacon/ids/request reqID=1756126334106656400 -> 127.0.0.1:47111 (reply=192.168.1.120:48001)
+2025/08/25 14:52:14 RECV /beacon/ids/response FROM 192.168.1.120:53856
+2025/08/25 14:52:14 RECV /beacon/ids/response reqID=1756126334106656400 peers=2
+2025/08/25 14:52:14 ids/resp peer #0: uid=a5d3def245e94709059b31aeae0d4fd1 tag="NotServer" ip=192.168.1.112
+2025/08/25 14:52:14 ids/resp peer #1: uid= tag="" ip=Server
+2025/08/25 14:52:14 UI rows updated: 2 rows
+2025/08/25 14:53:17 CLICK: Apply
+2025/08/25 14:53:17 CLICK: Query IDs
+2025/08/25 14:53:17 SEND /beacon/ids/request reqID=1756126397756809200 -> 127.0.0.1:47111 (reply=192.168.1.120:48001)
+2025/08/25 14:53:17 RECV /beacon/ids/response FROM 192.168.1.120:56469
+2025/08/25 14:53:17 RECV /beacon/ids/response reqID=1756126397756809200 peers=2
+2025/08/25 14:53:17 ids/resp peer #0: uid=a5d3def245e94709059b31aeae0d4fd1 tag="NotServer" ip=192.168.1.112
+2025/08/25 14:53:17 ids/resp peer #1: uid= tag="" ip=Server
+2025/08/25 14:53:17 UI rows updated: 2 rows
+2025/08/25 14:53:24 UNSELECT row=0
+2025/08/25 14:53:24 SELECT row=1 text="NotServer  (a5d3def245e94709059b31aeae0d4fd1)  @ 192.168.1.112" kind=peer uid=a5d3def245e94709059b31aeae0d4fd1
+2025/08/25 14:53:24 CLICK: Query Tags -> selected uid=a5d3def245e94709059b31aeae0d4fd1
+2025/08/25 14:53:24 CLICK: Query Tags (selected) target_uid="a5d3def245e94709059b31aeae0d4fd1"
+2025/08/25 14:53:24 SEND /beacon/tags/request reqID=1756126404973820100 target_uid=a5d3def245e94709059b31aeae0d4fd1 -> 127.0.0.1:47111 (reply=192.168.1.120:48001)
+2025/08/25 14:53:24 RECV /beacon/tags/response FROM 192.168.1.112:50542
+2025/08/25 14:53:24 RECV /beacon/tags/response reqID=1756126404973820100 uid=a5d3def245e94709059b31aeae0d4fd1 primary="NotServer" ip=192.168.1.112 port=47111 tags=[IsNotServer IsObsolete] (count=2)
+2025/08/25 14:53:24 UI rows updated: 4 rows
+2025/08/25 14:53:24 replaceTagsUnderPeer: peer=a5d3def245e94709059b31aeae0d4fd1 tags=[IsNotServer IsObsolete]
+2025/08/25 14:53:30 CLICK: Clear List
+2025/08/25 14:53:30 UI rows updated: 0 rows
+2025/08/25 14:53:30 CLICK: Apply
+2025/08/25 14:53:31 CLICK: Query IDs
+2025/08/25 14:53:31 SEND /beacon/ids/request reqID=1756126411239931600 -> 127.0.0.1:47111 (reply=192.168.1.120:48001)
+2025/08/25 14:53:31 RECV /beacon/ids/response FROM 192.168.1.120:56500
+2025/08/25 14:53:31 RECV /beacon/ids/response reqID=1756126411239931600 peers=2
+2025/08/25 14:53:31 ids/resp peer #0: uid=a5d3def245e94709059b31aeae0d4fd1 tag="NotServer" ip=192.168.1.112
+2025/08/25 14:53:31 ids/resp peer #1: uid= tag="" ip=Server
+2025/08/25 14:53:31 UI rows updated: 2 rows
+2025/08/25 14:53:32 CLICK: Query Tags -> no selection
+2025/08/25 14:53:32 UNSELECT row=1
+2025/08/25 14:53:32 SELECT row=0 text="  ()  @ Server" kind=peer uid=
+2025/08/25 14:54:03 UNSELECT row=0
+2025/08/25 14:54:03 SELECT row=1 text="NotServer  (a5d3def245e94709059b31aeae0d4fd1)  @ 192.168.1.112" kind=peer uid=a5d3def245e94709059b31aeae0d4fd1
+2025/08/25 14:54:05 CLICK: Query Tags -> selected uid=a5d3def245e94709059b31aeae0d4fd1
+2025/08/25 14:54:05 CLICK: Query Tags (selected) target_uid="a5d3def245e94709059b31aeae0d4fd1"
+2025/08/25 14:54:05 SEND /beacon/tags/request reqID=1756126445057079000 target_uid=a5d3def245e94709059b31aeae0d4fd1 -> 127.0.0.1:47111 (reply=192.168.1.120:48001)
+2025/08/25 14:54:05 RECV /beacon/tags/response FROM 192.168.1.112:50239
+2025/08/25 14:54:05 RECV /beacon/tags/response reqID=1756126445057079000 uid=a5d3def245e94709059b31aeae0d4fd1 primary="NotServer" ip=192.168.1.112 port=47111 tags=[IsNotServer IsObsolete] (count=2)
+2025/08/25 14:54:05 UI rows updated: 4 rows
+2025/08/25 14:54:05 replaceTagsUnderPeer: peer=a5d3def245e94709059b31aeae0d4fd1 tags=[IsNotServer IsObsolete]
+2025/08/25 15:15:23 CLICK: Close window
+2025/08/25 15:15:23 cleanup: stopping receiver...
+2025/08/25 15:15:23 receiver: stop signal -> closing socket
+2025/08/25 15:15:23 consumer receiver exited
+2025/08/25 15:15:23 cleanup: done

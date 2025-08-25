@@ -7,56 +7,83 @@ import (
 	"time"
 )
 
-// ---------- Peer store ----------
-
+// Peer beschreibt einen bekannten Beacon (Sidecar).
 type Peer struct {
 	UID      string
-	Tag      string
+	Name     string // früher: Tag (Primär-Anzeigename)
 	IP       string
 	RecvPort int
 	LastSeen time.Time
 }
 
+// PeerStore verwaltet Peers thread-safe.
 type PeerStore struct {
 	mu    sync.Mutex
-	peers map[string]Peer // key = UID hex
-	ttl   time.Duration   // e.g. 5s
+	peers map[string]Peer // key: UID (hex)
 }
 
-func NewPeerStore(ttl time.Duration) *PeerStore {
-	return &PeerStore{
-		peers: make(map[string]Peer),
-		ttl:   ttl,
-	}
+func NewPeerStore() *PeerStore {
+	return &PeerStore{peers: make(map[string]Peer)}
 }
 
-// Upsert inserts or updates a peer entry.
+// Upsert fügt einen Peer ein oder aktualisiert ihn.
 func (s *PeerStore) Upsert(p Peer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	prev, ok := s.peers[p.UID]
+	if ok {
+		if strings.TrimSpace(p.Name) != "" {
+			prev.Name = p.Name
+		}
+		if strings.TrimSpace(p.IP) != "" {
+			prev.IP = p.IP
+		}
+		if p.RecvPort != 0 {
+			prev.RecvPort = p.RecvPort
+		}
+		if !p.LastSeen.IsZero() {
+			prev.LastSeen = p.LastSeen
+		}
+		s.peers[p.UID] = prev
+		return
+	}
 	s.peers[p.UID] = p
 }
 
-// Snapshot returns a copy of all peers, sorted by Tag.
+// SetRecvPort setzt (oder aktualisiert) den bekannten Receive-Port eines Peers.
+func (s *PeerStore) SetRecvPort(uid string, port int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.peers[uid]
+	p.RecvPort = port
+	s.peers[uid] = p
+}
+
+// Snapshot liefert eine sortierte Kopie (Name, dann UID).
 func (s *PeerStore) Snapshot() []Peer {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	out := make([]Peer, 0, len(s.peers))
 	for _, p := range s.peers {
 		out = append(out, p)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].Tag < out[j].Tag
+		if !strings.EqualFold(out[i].Name, out[j].Name) {
+			return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+		}
+		return out[i].UID < out[j].UID
 	})
 	return out
 }
 
-// Prune removes peers older than ttl, returns number removed.
-func (s *PeerStore) Prune(now time.Time) int {
+// Prune entfernt Peers, die länger als d nicht gesehen wurden.
+func (s *PeerStore) Prune(d time.Duration) int {
+	cutoff := time.Now().Add(-d)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	removed := 0
-	cutoff := now.Add(-s.ttl)
 	for uid, p := range s.peers {
 		if p.LastSeen.Before(cutoff) {
 			delete(s.peers, uid)
@@ -66,69 +93,62 @@ func (s *PeerStore) Prune(now time.Time) int {
 	return removed
 }
 
-// ---------- Tag store ----------
+// ---- Lokale Tags dieses Beacons ----
 
 type TagStore struct {
 	mu   sync.Mutex
-	tags []string // always kept sorted
+	tags []string // immer sortiert
 }
 
 func NewTagStore() *TagStore {
-	return &TagStore{tags: []string{}}
+	return &TagStore{}
 }
 
-// sanitizeTag removes all non [A-Za-z0-9] runes.
 func sanitizeTag(s string) string {
-	var b strings.Builder
+	b := make([]rune, 0, len(s))
 	for _, r := range s {
-		if (r >= 'A' && r <= 'Z') ||
-			(r >= 'a' && r <= 'z') ||
-			(r >= '0' && r <= '9') {
-			b.WriteRune(r)
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b = append(b, r)
 		}
 	}
-	return b.String()
+	return string(b)
 }
 
-// Add inserts a tag if valid (letters/digits) and not duplicate.
-func (t *TagStore) Add(raw string) bool {
-	tag := sanitizeTag(raw)
-	if tag == "" {
+func (s *TagStore) Add(t string) bool {
+	t = sanitizeTag(strings.TrimSpace(t))
+	if t == "" {
 		return false
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	for _, existing := range t.tags {
-		if strings.EqualFold(existing, tag) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ex := range s.tags {
+		if strings.EqualFold(ex, t) {
 			return false
 		}
 	}
-	t.tags = append(t.tags, tag)
-	sort.Strings(t.tags)
+	s.tags = append(s.tags, t)
+	sort.Slice(s.tags, func(i, j int) bool { return strings.ToLower(s.tags[i]) < strings.ToLower(s.tags[j]) })
 	return true
 }
 
-// Remove deletes a tag (case-insensitive match).
-func (t *TagStore) Remove(raw string) bool {
-	tag := sanitizeTag(raw)
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	orig := len(t.tags)
-	out := t.tags[:0]
-	for _, v := range t.tags {
-		if !strings.EqualFold(v, tag) {
-			out = append(out, v)
+func (s *TagStore) Remove(t string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	old := len(s.tags)
+	dst := s.tags[:0]
+	for _, v := range s.tags {
+		if !strings.EqualFold(v, t) {
+			dst = append(dst, v)
 		}
 	}
-	t.tags = out
-	return len(t.tags) != orig
+	s.tags = dst
+	return len(s.tags) != old
 }
 
-// List returns a copy of all tags.
-func (t *TagStore) List() []string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	out := make([]string, len(t.tags))
-	copy(out, t.tags)
+func (s *TagStore) List() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, len(s.tags))
+	copy(out, s.tags)
 	return out
 }
