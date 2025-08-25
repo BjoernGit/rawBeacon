@@ -36,16 +36,16 @@ func UIDHexToBytes(h string) ([]byte, error) {
 
 // ---------- /beacon/id ----------
 
-func BuildID(uid16 []byte, tag, ip string, port int) *osc.Message {
-	m := osc.NewMessage(AddrID)
-	m.Append(uid16)
-	m.Append(tag)
+func BuildID(uid []byte, name string, ip string, port int) *osc.Message {
+	m := osc.NewMessage("/beacon/id")
+	m.Append(uid)
+	m.Append(name) // korrekt: Primärname/ID
 	m.Append(ip)
 	m.Append(int32(port))
 	return m
 }
 
-func ParseID(msg *osc.Message) (uid16 []byte, tag, ip string, port int, err error) {
+func ParseID(msg *osc.Message) (uid16 []byte, name, ip string, port int, err error) {
 	if msg.Address != AddrID || len(msg.Arguments) < 3 {
 		return nil, "", "", 0, errors.New("invalid /beacon/id")
 	}
@@ -53,7 +53,7 @@ func ParseID(msg *osc.Message) (uid16 []byte, tag, ip string, port int, err erro
 	if uid16, ok = msg.Arguments[0].([]byte); !ok || len(uid16) != 16 {
 		return nil, "", "", 0, errors.New("id: uid must be 16 bytes")
 	}
-	tag, _ = msg.Arguments[1].(string)
+	name, _ = msg.Arguments[1].(string)
 	ip, _ = msg.Arguments[2].(string)
 	if len(msg.Arguments) >= 4 {
 		if p, ok := msg.Arguments[3].(int32); ok {

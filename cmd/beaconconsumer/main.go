@@ -245,9 +245,9 @@ func pickLocalIP() string {
 func sendIDsRequest() {
 	reqID := fmt.Sprintf("%d", time.Now().UnixNano())
 	msg := osc.NewMessage("/beacon/ids/request")
-	msg.Append(replyIPFor(beaconHost)) // s
-	msg.Append(int32(recvPort))        // i
-	msg.Append(reqID)                  // s
+	msg.Append(replyIPFor(""))  // s
+	msg.Append(int32(recvPort)) // i
+	msg.Append(reqID)           // s
 
 	data, _ := msg.MarshalBinary()
 	addr := fmt.Sprintf("%s:%d", beaconHost, beaconPort)
@@ -274,7 +274,7 @@ func sendIDsRequest() {
 func sendTagsRequest(targetUIDHex string) {
 	reqID := fmt.Sprintf("%d", time.Now().UnixNano())
 	msg := osc.NewMessage("/beacon/tags/request")
-	msg.Append(replyIPFor(beaconHost))          // s
+	msg.Append(replyIPFor(""))                  // s
 	msg.Append(int32(recvPort))                 // i
 	msg.Append(reqID)                           // s
 	msg.Append(strings.TrimSpace(targetUIDHex)) // s (empty => ask beacon itself)

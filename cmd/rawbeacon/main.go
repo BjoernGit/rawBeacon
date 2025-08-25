@@ -38,10 +38,10 @@ type PeerView struct {
 
 var (
 	// identity & ports
-	localUID []byte
-	localTag = "DefaultID"
-	sendPort = 47111
-	recvPort = 47111
+	localUID  []byte
+	localName = "DefaultID"
+	sendPort  = 47111
+	recvPort  = 47111
 
 	// state stores
 	peerStore = store.NewPeerStore(5 * time.Second)
@@ -114,7 +114,7 @@ func senderLoop(stop <-chan struct{}) {
 		case <-stop:
 			return
 		case <-ticker.C:
-			msg := proto.BuildID(localUID, localTag, netx.PickLocalIP(), recvPort)
+			msg := proto.BuildID(localUID, localName, netx.PickLocalIP(), recvPort)
 			data, _ := msg.MarshalBinary()
 			_ = bc.Send(data)
 		}
@@ -135,7 +135,7 @@ func receiverLoop(stop <-chan struct{}) {
 
 	// dispatcher with our handlers
 	disp := osc.NewStandardDispatcher()
-	handlers.Register(disp, peerStore, tagStore, localUID, localTag, recvPort)
+	handlers.Register(disp, peerStore, tagStore, localUID, localName, recvPort)
 
 	server := &osc.Server{Dispatcher: disp}
 	errCh := make(chan error, 1)
@@ -334,7 +334,7 @@ func main() {
 	// ---------- Left pane: Beacon controls + peers ----------
 
 	idEntry := widget.NewEntry()
-	idEntry.SetText(localTag)
+	idEntry.SetText(localName)
 	sendEntry := widget.NewEntry()
 	sendEntry.SetText(strconv.Itoa(sendPort))
 	recvEntry := widget.NewEntry()
@@ -343,7 +343,7 @@ func main() {
 	status := widget.NewLabel("")
 	updateStatus := func() {
 		status.SetText(fmt.Sprintf("Broadcasting: %q @ %s → :%d   |   Listening ← :%d",
-			localTag, netx.PickLocalIP(), sendPort, recvPort))
+			localName, netx.PickLocalIP(), sendPort, recvPort))
 	}
 
 	peerList := widget.NewListWithData(
@@ -355,7 +355,7 @@ func main() {
 	)
 
 	applyBtn := widget.NewButton("Start / Apply", func() {
-		localTag = idEntry.Text
+		localName = idEntry.Text
 		if p, err := strconv.Atoi(sendEntry.Text); err == nil && p > 0 && p < 65536 {
 			sendPort = p
 		}

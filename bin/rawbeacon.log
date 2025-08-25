@@ -10,3 +10,9 @@
 2025/08/25 13:57:56 receiver exited
 2025/08/25 13:58:03 sender exited
 2025/08/25 13:58:03 receiver exited
+2025/08/25 14:37:03 cleanup: stopping goroutines...
+2025/08/25 14:37:03 ui refresh exited
+2025/08/25 14:37:03 prune exited
+2025/08/25 14:37:03 sender exited
+2025/08/25 14:37:03 receiver exited
+2025/08/25 14:37:03 cleanup: all goroutines stopped
