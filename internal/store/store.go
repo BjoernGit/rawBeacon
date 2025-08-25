@@ -10,10 +10,11 @@ import (
 // ---------- Peer store ----------
 
 type Peer struct {
-	UID      string    // hex string
-	Tag      string    // primary tag / name
-	IP       string    // last seen IP
-	LastSeen time.Time // updated whenever a packet arrives
+	UID      string
+	Tag      string
+	IP       string
+	RecvPort int
+	LastSeen time.Time
 }
 
 type PeerStore struct {

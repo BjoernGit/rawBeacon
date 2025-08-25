@@ -36,25 +36,30 @@ func UIDHexToBytes(h string) ([]byte, error) {
 
 // ---------- /beacon/id ----------
 
-func BuildID(uid16 []byte, tag, ip string) *osc.Message {
+func BuildID(uid16 []byte, tag, ip string, port int) *osc.Message {
 	m := osc.NewMessage(AddrID)
-	m.Append(uid16) // b
-	m.Append(tag)   // s
-	m.Append(ip)    // s
+	m.Append(uid16)
+	m.Append(tag)
+	m.Append(ip)
+	m.Append(int32(port))
 	return m
 }
 
-func ParseID(msg *osc.Message) (uid16 []byte, tag, ip string, err error) {
+func ParseID(msg *osc.Message) (uid16 []byte, tag, ip string, port int, err error) {
 	if msg.Address != AddrID || len(msg.Arguments) < 3 {
-		return nil, "", "", errors.New("invalid /beacon/id")
+		return nil, "", "", 0, errors.New("invalid /beacon/id")
 	}
 	var ok bool
-	uid16, ok = msg.Arguments[0].([]byte)
-	if !ok || len(uid16) != 16 {
-		return nil, "", "", errors.New("id: uid must be 16 bytes")
+	if uid16, ok = msg.Arguments[0].([]byte); !ok || len(uid16) != 16 {
+		return nil, "", "", 0, errors.New("id: uid must be 16 bytes")
 	}
 	tag, _ = msg.Arguments[1].(string)
 	ip, _ = msg.Arguments[2].(string)
+	if len(msg.Arguments) >= 4 {
+		if p, ok := msg.Arguments[3].(int32); ok {
+			port = int(p)
+		}
+	}
 	return
 }
 
@@ -71,13 +76,14 @@ func BuildIDsRequest(replyIP string, replyPort int, reqID string) *osc.Message {
 // peers: triplets of (uid16, tag, ip)
 func BuildIDsResponse(reqID string, peers [][]interface{}) *osc.Message {
 	m := osc.NewMessage(AddrIDsResponse)
-	m.Append(reqID)             // s
-	m.Append(int32(len(peers))) // i
+	m.Append(reqID)
+	m.Append(int32(len(peers)))
 	for _, p := range peers {
-		// expect: [ []byte uid16, string tag, string ip ]
+		// expect: [ []byte uid16, string tag, string ip, int32 port ]
 		m.Append(p[0])
 		m.Append(p[1])
 		m.Append(p[2])
+		m.Append(p[3])
 	}
 	return m
 }
@@ -86,6 +92,7 @@ type PeerTriplet struct {
 	UID16 []byte
 	Tag   string
 	IP    string
+	Port  int // NEW
 }
 
 func ParseIDsResponse(msg *osc.Message) (reqID string, peers []PeerTriplet, err error) {
@@ -95,17 +102,22 @@ func ParseIDsResponse(msg *osc.Message) (reqID string, peers []PeerTriplet, err 
 	reqID, _ = msg.Arguments[0].(string)
 	cnt, _ := msg.Arguments[1].(int32)
 
-	peers = make([]PeerTriplet, 0, cnt)
-	expect := 2 + int(cnt)*3
+	expect := 2 + int(cnt)*4
 	if len(msg.Arguments) < expect {
 		return "", nil, errors.New("ids/response: not enough args")
 	}
+
+	peers = make([]PeerTriplet, 0, cnt)
 	for i := 0; i < int(cnt); i++ {
-		base := 2 + i*3
+		base := 2 + i*4
 		b, _ := msg.Arguments[base+0].([]byte)
 		t, _ := msg.Arguments[base+1].(string)
 		ip, _ := msg.Arguments[base+2].(string)
-		peers = append(peers, PeerTriplet{UID16: b, Tag: t, IP: ip})
+		port := 0
+		if v, ok := msg.Arguments[base+3].(int32); ok {
+			port = int(v)
+		}
+		peers = append(peers, PeerTriplet{UID16: b, Tag: t, IP: ip, Port: port})
 	}
 	return
 }

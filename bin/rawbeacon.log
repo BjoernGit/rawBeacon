@@ -1,24 +1,12 @@
-2025/08/24 22:37:30 recv listen error: listen udp4 :47111: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
-2025/08/24 22:37:30 receiver exited
-2025/08/24 22:37:39 sender exited
-2025/08/24 22:37:39 recv listen error: listen udp4 :47111: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
-2025/08/24 22:37:39 receiver exited
-2025/08/24 22:37:45 sender exited
-2025/08/24 22:37:45 receiver exited
-2025/08/24 22:37:54 sender exited
-2025/08/24 22:37:55 sender exited
-2025/08/24 22:37:55 receiver exited
-2025/08/24 22:38:22 sender exited
-2025/08/24 22:38:22 receiver exited
-2025/08/24 22:38:39 cleanup: stopping goroutines...
-2025/08/24 22:38:39 ui refresh exited
-2025/08/24 22:38:39 prune exited
-2025/08/24 22:38:39 sender exited
-2025/08/24 22:38:39 receiver exited
-2025/08/24 22:38:39 cleanup: all goroutines stopped
-2025/08/24 22:38:48 cleanup: stopping goroutines...
-2025/08/24 22:38:48 ui refresh exited
-2025/08/24 22:38:48 prune exited
-2025/08/24 22:38:48 receiver exited
-2025/08/24 22:38:48 sender exited
-2025/08/24 22:38:48 cleanup: all goroutines stopped
+2025/08/25 12:34:24 sender exited
+2025/08/25 12:34:24 receiver exited
+2025/08/25 12:41:06 cleanup: stopping goroutines...
+2025/08/25 12:41:06 ui refresh exited
+2025/08/25 12:41:06 prune exited
+2025/08/25 12:41:06 sender exited
+2025/08/25 12:41:06 receiver exited
+2025/08/25 12:41:06 cleanup: all goroutines stopped
+2025/08/25 13:57:56 sender exited
+2025/08/25 13:57:56 receiver exited
+2025/08/25 13:58:03 sender exited
+2025/08/25 13:58:03 receiver exited

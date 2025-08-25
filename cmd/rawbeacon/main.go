@@ -20,7 +20,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/hypebeast/go-osc/osc"
 
-	// internal packages (adjust module path if needed)
+	// internal packages
 	"github.com/BjoernGit/rawBeacon/internal/handlers"
 	"github.com/BjoernGit/rawBeacon/internal/netx"
 	"github.com/BjoernGit/rawBeacon/internal/proto"
@@ -40,7 +40,7 @@ var (
 	// identity & ports
 	localUID []byte
 	localTag = "DefaultID"
-	sendPort = 47222
+	sendPort = 47111
 	recvPort = 47111
 
 	// state stores
@@ -114,9 +114,9 @@ func senderLoop(stop <-chan struct{}) {
 		case <-stop:
 			return
 		case <-ticker.C:
-			msg := proto.BuildID(localUID, localTag, netx.PickLocalIP())
+			msg := proto.BuildID(localUID, localTag, netx.PickLocalIP(), recvPort)
 			data, _ := msg.MarshalBinary()
-			_ = bc.Send(data) // best-effort
+			_ = bc.Send(data)
 		}
 	}
 }
